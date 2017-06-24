@@ -333,7 +333,7 @@ viewEditor qs saved =
                     ]
                     [ text "-" ]
                 ]
-            , ButtonGroup.buttonGroupItem []
+            , ButtonGroup.buttonGroupItem [ ButtonGroup.attrs [ class "ml-3" ] ]
                 [ ButtonGroup.button
                     [ Button.outlineSuccess
                     , Button.onClick DoSave
