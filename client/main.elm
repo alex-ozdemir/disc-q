@@ -332,14 +332,16 @@ viewEditor qs saved =
                     , Button.onClick DeleteQuestion
                     ]
                     [ text "-" ]
-                , ButtonGroup.button
+                ]
+            , ButtonGroup.buttonGroupItem []
+                [ ButtonGroup.button
                     [ Button.outlineSuccess
                     , Button.onClick DoSave
                     , Button.disabled (saved == Saved)
                     ]
                     [ text "Save" ]
                 ]
-            , ButtonGroup.buttonGroupItem []
+            , ButtonGroup.buttonGroupItem [ ButtonGroup.attrs [ class "ml-3" ] ]
                 [ ButtonGroup.button [ Button.outlineWarning, Button.onClick GetQuestions ]
                     [ text "Reload Saved Questions" ]
                 ]
