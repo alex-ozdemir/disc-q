@@ -453,6 +453,7 @@ questionEncoder question =
         [ ( "user", Encode.string question.user )
         , ( "week", Encode.int question.week )
         , ( "text", Encode.string question.text )
+        , ( "votes", question.votes |> List.map Encode.string |> Encode.list )
         ]
 
 
