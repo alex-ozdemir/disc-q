@@ -4,6 +4,18 @@
 
 module Main exposing (..)
 
+import Bootstrap.Alert as Alert
+import Bootstrap.Button as Button
+import Bootstrap.ButtonGroup as ButtonGroup
+import Bootstrap.CDN as CDN
+import Bootstrap.Form as Form
+import Bootstrap.Form.Input as Input
+import Bootstrap.Form.InputGroup as InputGroup
+import Bootstrap.Form.Textarea as Textarea
+import Bootstrap.Grid as Grid
+import Bootstrap.Grid.Col as Col
+import Bootstrap.ListGroup as ListGroup
+import Bootstrap.Table as Table
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -29,6 +41,7 @@ type alias Question =
     { user : User
     , week : Int
     , text : String
+    , votes : List User
     }
 
 
@@ -48,11 +61,11 @@ type Screen
         , user : User
         }
     | ShowError Http.Error
-    | EditThisWeek (List Question) SaveState
-
-
-
---    | ViewAll List Question
+    | Interface
+        { yourQuestions : List Question
+        , allQuestions : List Question
+        , saved : SaveState
+        }
 
 
 type alias Model =
@@ -66,31 +79,22 @@ init : ( Model, Cmd Msg )
 init =
     ( { screen = Loading
       , user = "default"
-      , week = 1
+      , week = 2
       }
     , usersCmd
     )
-
-
-
--- UPDATE
---    | GetAll
---    | PostThisWeek User Int List Question
---    | GetAll List Question
---    | GetThisWeek List Question
---    | Posted
 
 
 type Msg
     = HazUsers (Result Http.Error (List User))
     | SwitchUser User
     | ChangeUser User
+    | GetQuestions
     | HazQuestions (Result Http.Error (List Question))
-    | EditQuestion Int String
     | NewQuestion
     | DeleteQuestion
+    | EditQuestion Int String
     | DoSave
-    | SaveDone (Result Http.Error (List Question))
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -134,9 +138,17 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        GetQuestions ->
+            ( model, getQuestionsCmd )
+
         HazQuestions (Ok qs) ->
             ( { model
-                | screen = EditThisWeek qs Saved
+                | screen =
+                    Interface
+                        { yourQuestions = List.filter (\q -> q.week == model.week && q.user == model.user) qs
+                        , allQuestions = List.sortBy (\q -> q.week) qs
+                        , saved = Saved
+                        }
               }
             , Cmd.none
             )
@@ -150,9 +162,18 @@ update msg model =
 
         NewQuestion ->
             case model.screen of
-                EditThisWeek qs _ ->
+                Interface screen ->
                     ( { model
-                        | screen = EditThisWeek (qs |> List.reverse |> (\l -> Question model.user model.week "" :: l) |> List.reverse) NotSaved
+                        | screen =
+                            Interface
+                                { screen
+                                    | yourQuestions =
+                                        screen.yourQuestions
+                                            |> List.reverse
+                                            |> (\l -> Question model.user model.week "" [] :: l)
+                                            |> List.reverse
+                                    , saved = NotSaved
+                                }
                       }
                     , Cmd.none
                     )
@@ -162,9 +183,18 @@ update msg model =
 
         DeleteQuestion ->
             case model.screen of
-                EditThisWeek qs _ ->
+                Interface screen ->
                     ( { model
-                        | screen = EditThisWeek (qs |> List.reverse |> List.drop 1 |> List.reverse) NotSaved
+                        | screen =
+                            Interface
+                                { screen
+                                    | yourQuestions =
+                                        screen.yourQuestions
+                                            |> List.reverse
+                                            |> List.drop 1
+                                            |> List.reverse
+                                    , saved = NotSaved
+                                }
                       }
                     , Cmd.none
                     )
@@ -174,21 +204,23 @@ update msg model =
 
         EditQuestion i string ->
             case model.screen of
-                EditThisWeek qs _ ->
+                Interface screen ->
                     ( { model
                         | screen =
-                            EditThisWeek
-                                (List.indexedMap
-                                    (\qi ->
-                                        \q ->
-                                            if i == qi then
-                                                { q | text = string }
-                                            else
-                                                q
-                                    )
-                                    qs
-                                )
-                                NotSaved
+                            Interface
+                                { screen
+                                    | yourQuestions =
+                                        List.indexedMap
+                                            (\qi ->
+                                                \q ->
+                                                    if i == qi then
+                                                        { q | text = string }
+                                                    else
+                                                        q
+                                            )
+                                            screen.yourQuestions
+                                    , saved = NotSaved
+                                }
                       }
                     , Cmd.none
                     )
@@ -198,43 +230,16 @@ update msg model =
 
         DoSave ->
             case model.screen of
-                EditThisWeek qs _ ->
+                Interface { yourQuestions } ->
                     ( model
-                    , saveQuestions model.user model.week qs
+                    , saveQuestions model.user model.week yourQuestions
                     )
 
                 _ ->
                     ( model, Cmd.none )
 
-        SaveDone (Ok qs) ->
-            case model.screen of
-                EditThisWeek _ _ ->
-                    ( { model
-                        | screen = EditThisWeek qs Saved
-                      }
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        SaveDone (Err e) ->
-            ( { model
-                | screen = ShowError e
-              }
-            , Cmd.none
-            )
 
 
-
---        MorePlease ->
---            ( model, getRandomGif model.topic )
---
---        NewGif (Ok newUrl) ->
---            ( Model model.topic newUrl, Cmd.none )
---
---        NewGif (Err _) ->
---            ( model, Cmd.none )
 -- VIEW
 
 
@@ -242,60 +247,134 @@ view : Model -> Html Msg
 view model =
     case model.screen of
         Loading ->
-            p [] [ text "Loading" ]
+            Alert.info [ text "Loading" ]
 
         Login { users, user } ->
-            div []
+            Grid.container []
                 [ h2 [] [ text "Login" ]
                 , h4 [] [ text "Existing Users" ]
-                , ul [] (List.map (\u -> li [ value u ] [ text u ]) users)
-                , label [ for "loginUser" ] [ text "Who are you? " ]
-                , input [ name "loginUser", onInput ChangeUser ] []
-                , button [ onClick (SwitchUser user) ] [ text "Login" ]
+                , ButtonGroup.buttonGroup [ ButtonGroup.vertical ]
+                    (List.map
+                        (\u ->
+                            ButtonGroup.button
+                                [ Button.outlinePrimary, Button.onClick (SwitchUser u) ]
+                                [ text u ]
+                        )
+                        users
+                    )
+                , br [] []
+                , br [] []
+                , h4 [] [ text "New Users" ]
+                , Form.formInline
+                    []
+                    [ Input.text [ Input.placeholder "username", Input.onInput ChangeUser ]
+                    , Button.button
+                        [ Button.outlinePrimary
+                        , Button.onClick (SwitchUser user)
+                        ]
+                        [ text "Create" ]
+                    ]
                 ]
 
         ShowError e ->
-            pre [] [ e |> toString |> text ]
+            Alert.danger [ code [] [ e |> toString |> text ] ]
 
-        EditThisWeek qs saveState ->
-            div []
-                [ p [] [ text ("Hi " ++ model.user) ]
-                , h2 [] [ text "Your questions for this week" ]
-                , button [ onClick NewQuestion ] [ text "+" ]
-                , button [ onClick DeleteQuestion ] [ text "-" ]
-                , button [ onClick DoSave ] [ text "Save" ]
-                , div []
-                    (List.indexedMap
-                        (\i ->
-                            \q ->
-                                let
-                                    qname =
-                                        "Q" ++ toString i
-                                in
-                                div []
-                                    [ label [ for qname ] [ text (qname ++ " ") ]
-                                    , textarea
-                                        [ name qname
-                                        , onInput (EditQuestion i)
-                                        , rows 4
-                                        , cols 50
-                                        ]
-                                        [ text q.text ]
-                                    ]
-                        )
-                        qs
-                    )
-                , p []
-                    [ text
-                        (case saveState of
-                            NotSaved ->
-                                "These are not saved"
-
-                            Saved ->
-                                "These have been saved"
-                        )
+        Interface data ->
+            Grid.container []
+                [ Grid.row []
+                    --                    [ Grid.col [ Col.md6 ] [ text "hi" ]
+                    --                    , Grid.col [ Col.md6 ] [ text "bye" ]
+                    --                    ]
+                    [ Grid.col [ Col.xl8 ] [ viewAllQuestions data.allQuestions ]
+                    , Grid.col [ Col.xl4 ] [ viewEditor data.yourQuestions data.saved ]
                     ]
                 ]
+
+
+viewAllQuestions : List Question -> Html Msg
+viewAllQuestions qs =
+    div []
+        [ h2 [] [ text "All Questions" ]
+        , Table.simpleTable
+            ( Table.simpleThead
+                [ Table.th [] [ text "Week" ]
+                , Table.th [] [ text "User" ]
+                , Table.th [] [ text "Question" ]
+                ]
+            , Table.tbody []
+                (List.map
+                    (\q ->
+                        Table.tr []
+                            [ Table.td [] [ q.week |> toString |> text ]
+                            , Table.td [] [ q.user |> text ]
+                            , Table.td [] [ q.text |> text ]
+                            ]
+                    )
+                    qs
+                )
+            )
+        ]
+
+
+viewEditor : List Question -> SaveState -> Html Msg
+viewEditor qs saved =
+    div []
+        [ h2 [] [ text "Your questions" ]
+        , ButtonGroup.toolbar []
+            [ ButtonGroup.buttonGroupItem []
+                [ ButtonGroup.button
+                    [ Button.outlineSecondary
+                    , Button.onClick NewQuestion
+                    ]
+                    [ text "+" ]
+                , ButtonGroup.button
+                    [ Button.outlineSecondary
+                    , Button.onClick DeleteQuestion
+                    ]
+                    [ text "-" ]
+                , ButtonGroup.button
+                    [ Button.outlineSuccess
+                    , Button.onClick DoSave
+                    , Button.disabled (saved == Saved)
+                    ]
+                    [ text "Save" ]
+                ]
+            , ButtonGroup.buttonGroupItem []
+                [ ButtonGroup.button [ Button.outlineWarning, Button.onClick GetQuestions ]
+                    [ text "Reload Saved Questions" ]
+                ]
+            ]
+        , div []
+            (List.indexedMap
+                (\i ->
+                    \q ->
+                        let
+                            qname =
+                                "Question " ++ toString i
+                        in
+                        Form.form []
+                            [ Form.group []
+                                [ Form.label [ for qname ] [ text (qname ++ " ") ]
+                                , Textarea.textarea
+                                    [ Textarea.id qname
+                                    , Textarea.onInput (EditQuestion i)
+                                    , Textarea.rows 5
+                                    , Textarea.defaultValue q.text
+                                    ]
+                                ]
+                            ]
+                )
+                qs
+            )
+        , br [] []
+        , br [] []
+        , case saved of
+            Saved ->
+                Alert.success [ text "These have been saved" ]
+
+            NotSaved ->
+                Alert.warning [ text "These are not saved" ]
+        ]
 
 
 
@@ -313,10 +392,11 @@ subscriptions model =
 
 host : String
 host =
-    "134.173.42.255:9876"
+    "ec2-54-183-112-131.us-west-1.compute.amazonaws.com:9876"
 
 
 
+-- "134.173.42.255:9876"
 --"www.cs.hmc.edu:9876"
 
 
@@ -338,13 +418,23 @@ getQuestionsCmd =
     Http.send HazQuestions (Http.get url (Decode.list questionDecoder))
 
 
+
+--getQuestionsCmd : User -> Int -> Cmd Msg
+--getQuestionsCmd user week =
+--    let
+--        url =
+--            "http://" ++ host ++ "/questions/" ++ user ++ "/" ++ toString week ++ "/"
+--    in
+--    Http.send HazQuestions (Http.get url (Decode.list questionDecoder))
+
+
 saveQuestions : User -> Int -> List Question -> Cmd Msg
 saveQuestions user week qs =
     let
         url =
             "http://" ++ host ++ "/questions/" ++ user ++ "/" ++ toString week ++ "/"
     in
-    Http.send SaveDone
+    Http.send HazQuestions
         (Http.post url
             (qs |> List.map questionEncoder |> Encode.list |> Http.jsonBody)
             (Decode.list questionDecoder)
@@ -366,7 +456,8 @@ questionEncoder question =
 
 questionDecoder : Decode.Decoder Question
 questionDecoder =
-    Decode.map3 Question
+    Decode.map4 Question
         (Decode.field "user" Decode.string)
         (Decode.field "week" Decode.int)
         (Decode.field "text" Decode.string)
+        (Decode.field "votes" (Decode.list Decode.string))

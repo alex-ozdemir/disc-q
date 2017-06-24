@@ -23,6 +23,7 @@ pub struct Question {
     user: String,
     week: u8,
     text: String,
+    votes: Vec<String>,
 }
 
 type QuestionResponse = CORS<Result<JSON<Vec<Question>>, String>>;
@@ -66,10 +67,13 @@ fn cors_preflight(user: &str, week: u8) -> cors::PreflightCORS {
 #[post("/questions/<user>/<week>", format = "application/json", data = "<questions>")]
 fn set(user: &str, week: u8, questions: JSON<Vec<Question>>, db: rocket::State<SyncDB>) -> QuestionResponse {
     CORS::any(db.write()
-         .map_err(DQError::from)
-         .and_then(|mut db| db.set_questions(user, week, questions.clone()))
-         .map(|_| questions)
-         .map_err(DQError::output))
+        .map_err(DQError::from)
+        .and_then(|mut db| {
+            db.set_questions(user, week, questions.clone())
+              .and_then(|_| db.get_all_questions())
+        })
+        .map(JSON)
+        .map_err(DQError::output))
 }
 
 fn main() {

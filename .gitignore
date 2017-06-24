@@ -1,6 +1,6 @@
 server/target/
 server/db
 client/elm-stuff
-client/index.html
+client/main.js
 **.swp
 **/*.rs.bk
