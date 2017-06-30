@@ -12,8 +12,11 @@ mod questions;
 mod error;
 mod cors;
 
+use rocket::response::Stream;
 use rocket_contrib::JSON;
+use std::io;
 use std::sync::RwLock;
+use std::fs::File;
 
 pub use error::DQError;
 pub use cors::CORS;
@@ -28,6 +31,17 @@ pub struct Question {
 
 type QuestionResponse = CORS<Result<JSON<Vec<Question>>, String>>;
 type SyncDB = RwLock<questions::QuestionDB>;
+
+#[get("/")]
+fn index() -> io::Result<Stream<File>> {
+    File::open("client/index.html").map(Stream::from)
+}
+
+#[get("/main.js")]
+fn get_elm() -> io::Result<Stream<File>> {
+    File::open("client/main.js").map(Stream::from)
+}
+
 
 #[get("/users")]
 fn get_users(db: rocket::State<SyncDB>) -> CORS<Result<JSON<Vec<String>>, String>> {
@@ -79,5 +93,5 @@ fn set(user: &str, week: u8, questions: JSON<Vec<Question>>, db: rocket::State<S
 fn main() {
     rocket::ignite()
         .manage(RwLock::new(questions::QuestionDB::new("db".to_string())))
-        .mount("/", routes![get_users, get_all, get, set,cors_preflight]).launch();
+        .mount("/", routes![get_users, get_all, get, set,cors_preflight, index, get_elm]).launch();
 }
