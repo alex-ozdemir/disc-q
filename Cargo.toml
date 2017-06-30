@@ -2,6 +2,7 @@
 name = "server"
 version = "0.1.0"
 authors = ["Alex Ozdemir <aozdemir@hmc.edu>"]
+build = "build.rs"
 
 [dependencies]
 rocket = "0.2.8"
